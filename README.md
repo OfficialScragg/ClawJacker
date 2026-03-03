@@ -1,4 +1,4 @@
-# ClawJacker PoC
+# ClawJacker
 
 Proof-of-concept demonstrating an attack against the OpenClaw gateway. This repository contains two components:
 
