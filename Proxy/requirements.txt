@@ -1,0 +1,4 @@
+flask>=3.0.0
+flask-sock>=0.7.0
+pyopenssl>=24.0.0
+cryptography>=42.0.0

